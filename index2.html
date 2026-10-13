@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Coin Collector: Pixel Adventure</title>
+  
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      padding: 24px 12px;
+      background: #15152e;
+      color: #fff4cf;
+      font-family: monospace;
+      text-align: center;
+    }
+
+    .game-container {
+      width: 100%;
+      max-width: 850px;
+      margin: auto;
+    }
+
+    h1 {
+      margin: 5px 0;
+      color: #ffcf4a;
+      font-size: clamp(24px, 5vw, 38px);
+      text-shadow: 3px 3px #9b4c37;
+    }
+
+    .subtitle {
+      margin-top: 5px;
+      color: #a8e6a1;
+    }
+
+    .stats {
+      display: flex;
+      justify-content: space-around;
+      gap: 12px;
+      margin: 20px 0 10px;
+      padding: 12px;
+      background: #29294d;
+      border: 3px solid #65659a;
+      border-radius: 8px;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: auto;
+      border: 4px solid #fff4cf;
+      border-radius: 5px;
+      background: #87d8f5;
+      image-rendering: pixelated;
+    }
+
+    #message {
+      min-height: 24px;
+      color: #a8e6a1;
+      font-weight: bold;
+    }
+
+    .controls {
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+      margin: 18px 0;
+    }
+
+    button {
+      padding: 12px 18px;
+      border: 3px solid #fff4cf;
+      border-radius: 6px;
+      background: #4c4ca0;
+      color: white;
+      font-family: monospace;
+      font-weight: bold;
+      cursor: pointer;
+      touch-action: none;
+    }
+
+    button:hover {
+      background: #6666c4;
+    }
+
+    button:active {
+      transform: translateY(2px);
+    }
+
+    .restart {
+      background: #31835a;
+    }
+
+    .help,
+    .footer {
+      color: #b8b8d9;
+      font-size: 12px;
+      line-height: 1.7;
+    }
+
+    @media (max-width: 480px) {
+      body {
+        padding: 14px 8px;
+      }
+
+      .controls {
+        gap: 8px;
+      }
+
+      button {
+        padding: 12px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="game-container">
+    <h1>COIN COLLECTOR</h1>
+    <p class="subtitle">Pixel Adventure</p>
+
+    <div class="stats">
+      <span>🪙 Skor: <b id="score">0</b></span>
+      <span>❤️ Nyawa: <b id="lives">3</b></span>
+    </div>
+
+    <canvas id="game" width="800" height="450"
+      aria-label="Area permainan Coin Collector"></canvas>
+
+    <p id="message">Kumpulkan semua koin dan hindari duri!</p>
+
+    <div class="controls">
+      <button id="leftBtn" aria-label="Ke kiri">◀</button>
+      <button id="jumpBtn" aria-label="Lompat">⬆ LOMPAT</button>
+      <button id="rightBtn" aria-label="Ke kanan">▶</button>
+    </div>
+
+    <button id="restartBtn" class="restart">↻ Mulai Ulang</button>
+    <p class="help">Gerak: A/D atau ←/→ · Lompat: W, ↑, atau Spasi</p>
+    <p class="footer">Dibuat dengan HTML, CSS, dan JavaScript</p>
+  </main>
+
+  <script>
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d");
+
+    const scoreText = document.getElementById("score");
+    const livesText = document.getElementById("lives");
+    const message = document.getElementById("message");
+
+    const W = canvas.width;
+    const H = canvas.height;
+
+    const keys = {};
+    let score = 0;
+    let lives = 3;
+    let collected = new Set();
+    let gameOver = false;
+    let won = false;
+    let frame = 0;
+
+    const gravity = 0.55;
+
+    const player = {
+      x: 40, y: 330,
+      w: 26, h: 30,
+      vx: 0, vy: 0,
+      speed: 4,
+      jump: -11,
+      grounded: false,
+      invincible: 0
+    };
+
+    const platforms = [
+      { x: 0, y: 410, w: 800, h: 40 },
+      { x: 120, y: 335, w: 125, h: 16 },
+      { x: 300, y: 275, w: 125, h: 16 },
+      { x: 480, y: 335, w: 125, h: 16 },
+      { x: 640, y: 260, w: 110, h: 16 }
+    ];
+
+    const coins = [
+      { x: 75, y: 375 },
+      { x: 165, y: 300 },
+      { x: 220, y: 300 },
+      { x: 340, y: 240 },
+      { x: 395, y: 240 },
+      { x: 525, y: 300 },
+      { x: 575, y: 300 },
+      { x: 680, y: 225 },
+      { x: 725, y: 225 },
+      { x: 760, y: 375 }
+    ];
+
+    const spikes = [
+      { x: 265, y: 390, w: 30, h: 20 },
+      { x: 445, y: 390, w: 30, h: 20 },
+      { x: 610, y: 390, w: 30, h: 20 }
+    ];
+
+    function overlaps(a, b) {
+      return a.x < b.x + b.w &&
+             a.x + a.w > b.x &&
+             a.y < b.y + b.h &&
+             a.y + a.h > b.y;
+    }
+
+    function updateStats() {
+      scoreText.textContent = score;
+      livesText.textContent = lives;
+    }
+
+    function resetGame() {
+      score = 0;
+      lives = 3;
+      collected = new Set();
+      gameOver = false;
+      won = false;
+      frame = 0;
+
+      player.x = 40;
+      player.y = 330;
+      player.vx = 0;
+      player.vy = 0;
+      player.grounded = false;
+      player.invincible = 0;
+
+      message.textContent = "Kumpulkan semua koin dan hindari duri!";
+      updateStats();
+    }
+
+    function jump() {
+      if (!gameOver && !won && player.grounded) {
+        player.vy = player.jump;
+        player.grounded = false;
+      }
+    }
+
+    window.addEventListener("keydown", (e) => {
+      const key = e.key.toLowerCase();
+
+      if (["arrowleft", "arrowright", "arrowup", " "].includes(key)) {
+        e.preventDefault();
+      }
+
+      keys[key] = true;
+
+      if (["arrowup", "w", " "].includes(key) && !e.repeat) {
+        jump();
+      }
+    });
+
+    window.addEventListener("keyup", (e) => {
+      keys[e.key.toLowerCase()] = false;
+    });
+
+    window.addEventListener("blur", () => {
+      for (const key in keys) keys[key] = false;
+    });
+
+    function bindButton(id, key) {
+      const button = document.getElementById(id);
+
+      button.addEventListener("pointerdown", (e) => {
+        e.preventDefault();
+        keys[key] = true;
+        if (key === " ") jump();
+        button.setPointerCapture(e.pointerId);
+      });
+
+      const release = () => {
+        keys[key] = false;
+      };
+
+      button.addEventListener("pointerup", release);
+      button.addEventListener("pointercancel", release);
+      button.addEventListener("lostpointercapture", release);
+    }
+
+    bindButton("leftBtn", "arrowleft");
+    bindButton("rightBtn", "arrowright");
+    bindButton("jumpBtn", " ");
+
+    document.getElementById("restartBtn").addEventListener("click", resetGame);
+
+    function update() {
+      if (gameOver || won) return;
+
+      frame++;
+
+      player.vx = 0;
+
+      if (keys["arrowleft"] || keys["a"]) {
+        player.vx = -player.speed;
+      }
+
+      if (keys["arrowright"] || keys["d"]) {
+        player.vx = player.speed;
+      }
+
+      player.x += player.vx;
+      player.x = Math.max(0, Math.min(W - player.w, player.x));
+
+      const previousBottom = player.y + player.h;
+      player.vy += gravity;
+      player.y += player.vy;
+      player.grounded = false;
+
+      for (const p of platforms) {
+        const currentBottom = player.y + player.h;
+
+        if (
+          player.vy >= 0 &&
+          previousBottom <= p.y &&
+          currentBottom >= p.y &&
+          player.x + player.w > p.x &&
+          player.x < p.x + p.w
+        ) {
+          player.y = p.y - player.h;
+          player.vy = 0;
+          player.grounded = true;
+        }
+      }
+
+      if (player.y > H + 30) {
+        loseLife();
+        return;
+      }
+
+      coins.forEach((coin, i) => {
+        if (collected.has(i)) return;
+
+        const coinBox = {
+          x: coin.x - 9,
+          y: coin.y - 9,
+          w: 18,
+          h: 18
+        };
+
+        if (overlaps(player, coinBox)) {
+          collected.add(i);
+          score += 10;
+          updateStats();
+
+          if (collected.size === coins.length) {
+            won = true;
+            message.textContent = "🏆 MENANG! Semua koin berhasil dikumpulkan!";
+          }
+        }
+      });
+
+      if (player.invincible > 0) player.invincible--;
+
+      if (player.invincible === 0) {
+        for (const spike of spikes) {
+          const hitbox = {
+            x: spike.x + 5,
+            y: spike.y + 8,
+            w: spike.w - 10,
+            h: spike.h - 8
+          };
+
+          if (overlaps(player, hitbox)) {
+            loseLife();
+            break;
+          }
+        }
+      }
+    }
+
+    function loseLife() {
+      lives--;
+      updateStats();
+
+      if (lives <= 0) {
+        gameOver = true;
+        message.textContent = "GAME OVER! Tekan Mulai Ulang untuk mencoba lagi.";
+      } else {
+        player.x = 40;
+        player.y = 330;
+        player.vx = 0;
+        player.vy = 0;
+        player.grounded = false;
+        player.invincible = 90;
+        message.textContent = "Awas! Nyawa tersisa: " + lives;
+      }
+    }
+
+    function drawBackground() {
+      ctx.fillStyle = "#87d8f5";
+      ctx.fillRect(0, 0, W, H);
+
+      ctx.fillStyle = "#ffe36e";
+      ctx.fillRect(690, 35, 45, 45);
+      ctx.fillRect(700, 27, 25, 8);
+      ctx.fillRect(700, 80, 25, 8);
+
+      ctx.fillStyle = "#ffffff";
+      for (const cloud of [
+        { x: 80, y: 60 },
+        { x: 350, y: 100 },
+        { x: 560, y: 50 }
+      ]) {
+        ctx.fillRect(cloud.x, cloud.y, 48, 16);
+        ctx.fillRect(cloud.x + 12, cloud.y - 10, 24, 10);
+        ctx.fillRect(cloud.x + 8, cloud.y + 16, 32, 6);
+      }
+
+      ctx.fillStyle = "#72c58a";
+      ctx.fillRect(0, 365, W, 45);
+      ctx.fillRect(50, 345, 100, 30);
+      ctx.fillRect(550, 350, 120, 25);
+    }
+
+    function drawPlatforms() {
+      for (const p of platforms) {
+        ctx.fillStyle = "#92552f";
+        ctx.fillRect(p.x, p.y, p.w, p.h);
+
+        ctx.fillStyle = "#57a844";
+        ctx.fillRect(p.x, p.y, p.w, 6);
+
+        ctx.fillStyle = "#c78649";
+        for (let x = p.x + 8; x < p.x + p.w; x += 24) {
+          ctx.fillRect(x, p.y + 10, 10, 5);
+        }
+      }
+    }
+
+    function drawCoins() {
+      coins.forEach((coin, i) => {
+        if (collected.has(i)) return;
+
+        const bob = Math.sin(frame * 0.08 + i) * 3;
+        const y = coin.y + bob;
+
+        ctx.fillStyle = "#b87916";
+        ctx.fillRect(coin.x - 8, y - 9, 16, 18);
+
+        ctx.fillStyle = "#ffcf35";
+        ctx.fillRect(coin.x - 5, y - 9, 10, 18);
+        ctx.fillRect(coin.x - 8, y - 5, 16, 10);
+
+        ctx.fillStyle = "#fff1a3";
+        ctx.fillRect(coin.x - 3, y - 6, 3, 5);
+      });
+    }
+
+    function drawSpikes() {
+      for (const spike of spikes) {
+        ctx.fillStyle = "#db4059";
+
+        ctx.beginPath();
+        ctx.moveTo(spike.x, spike.y + spike.h);
+        ctx.lineTo(spike.x + spike.w / 2, spike.y);
+        ctx.lineTo(spike.x + spike.w, spike.y + spike.h);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.fillStyle = "#ff9b9b";
+        ctx.fillRect(spike.x + 13, spike.y + 9, 4, 5);
+      }
+    }
+
+    function drawPlayer() {
+      if (player.invincible > 0 && Math.floor(player.invincible / 6) % 2 === 0) return;
+
+      const x = Math.round(player.x);
+      const y = Math.round(player.y);
+
+      ctx.fillStyle = "#35446e";
+      ctx.fillRect(x + 3, y + 24, 8, 6);
+      ctx.fillRect(x + 16, y + 24, 8, 6);
+
+      ctx.fillStyle = "#4169e1";
+      ctx.fillRect(x + 2, y + 10, 22, 16);
+
+      ctx.fillStyle = "#ffcf9c";
+      ctx.fillRect(x + 4, y, 18, 16);
+
+      ctx.fillStyle = "#633d2d";
+      ctx.fillRect(x + 3, y, 20, 5);
+      ctx.fillRect(x + 2, y + 4, 5, 5);
+
+      ctx.fillStyle = "#29294d";
+      ctx.fillRect(x + 16, y + 7, 3, 4);
+
+      ctx.fillStyle = "#ffcf4a";
+      ctx.fillRect(x + 3, y + 21, 20, 3);
+    }
+
+    function drawOverlay(title, subtitle) {
+      ctx.fillStyle = "rgba(21, 21, 46, 0.82)";
+      ctx.fillRect(100, 145, 600, 140);
+
+      ctx.textAlign = "center";
+      ctx.fillStyle = "#ffcf4a";
+      ctx.font = "bold 32px monospace";
+      ctx.fillText(title, W / 2, 200);
+
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "16px monospace";
+      ctx.fillText(subtitle, W / 2, 238);
+    }
+
+    function draw() {
+      drawBackground();
+      drawPlatforms();
+      drawCoins();
+      drawSpikes();
+      drawPlayer();
+
+      if (gameOver) {
+        drawOverlay("GAME OVER", "Klik Mulai Ulang untuk bermain lagi");
+      } else if (won) {
+        drawOverlay("KAMU MENANG!", "Skor akhir: " + score);
+      }
+    }
+
+    function loop() {
+      update();
+      draw();
+      requestAnimationFrame(loop);
+    }
+
+    resetGame();
+    loop();
+  </script>
+</body>
+</html>
